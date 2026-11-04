@@ -39,7 +39,7 @@
     *   複製並貼上本頁下方的 **[完整資料庫腳本]** 並執行。
 3.  **建立管理員**：
     *   前往 **Authentication > Users** -> **Add User**。
-    *   手動建立一組 Email 與密碼（用於登入客服後台）。
+    *   手動建立一組 Email 與密碼，並由可信任的管理員設定該使用者的 `app_metadata.role` 為 `admin`（禁止使用可自行修改的 `user_metadata`）。
 
 ### 步驟三：Netlify 雲端設定
 1.  進入您的 Netlify 專案控制台。
@@ -70,68 +70,7 @@
 
 請將以下內容完整複製並在 Supabase SQL Editor 中執行：
 
-```sql
--- [1] 系統設定表
-CREATE TABLE IF NOT EXISTS public.settings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    is_ai_enabled BOOLEAN DEFAULT true,
-    active_ai TEXT DEFAULT 'gpt',
-    gpt_api_key TEXT,
-    gpt_model_name TEXT DEFAULT 'gpt-4.1-mini',
-    gpt_temperature FLOAT DEFAULT 0.7,
-    gpt_max_tokens INTEGER DEFAULT 2000,
-    gpt_reasoning_effort TEXT DEFAULT 'none',
-    gpt_verbosity TEXT DEFAULT 'medium',
-    gemini_api_key TEXT,
-    gemini_model_name TEXT DEFAULT 'gemini-pro',
-    gemini_temperature FLOAT DEFAULT 1.0,
-    gemini_max_tokens INTEGER DEFAULT 2000,
-    gemini_thinking_level TEXT DEFAULT 'high',
-    system_prompt TEXT DEFAULT '你是一個專業的客服助手。',
-    reference_text TEXT DEFAULT '',
-    reference_file_url TEXT DEFAULT '',
-    line_channel_access_token TEXT,
-    line_channel_secret TEXT,
-    handover_keywords TEXT DEFAULT '真人,客服,人工',
-    handover_timeout_minutes INTEGER DEFAULT 30,
-    agent_user_ids TEXT DEFAULT ''
-);
-
--- [2] 用戶狀態表
-CREATE TABLE IF NOT EXISTS public.user_states (
-    line_user_id TEXT PRIMARY KEY,
-    nickname TEXT,
-    is_human_mode BOOLEAN DEFAULT false,
-    last_human_interaction TIMESTAMP WITH TIME ZONE,
-    last_ai_reset_at TIMESTAMP WITH TIME ZONE,
-    last_event_id TEXT -- LINE 去重機制關鍵
-);
-
--- [3] 事件去重表
-CREATE TABLE IF NOT EXISTS public.processed_events (
-    event_id TEXT PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- [4] 安全權限設定 (RLS)
-ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_states ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow Auth Access" ON public.settings FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow Auth Access States" ON public.user_states FOR ALL USING (auth.role() = 'authenticated');
-
--- [5] 初始化預設資料
-INSERT INTO public.settings (id) SELECT gen_random_uuid() WHERE NOT EXISTS (SELECT 1 FROM public.settings);
-
--- [6] 儲存空間 (Storage) 權限設定
-INSERT INTO storage.buckets (id, name, public) VALUES ('knowledge_base', 'knowledge_base', true) ON CONFLICT (id) DO NOTHING;
-CREATE POLICY "Allow Public Select" ON storage.objects FOR SELECT TO public USING (bucket_id = 'knowledge_base');
-CREATE POLICY "Allow Auth Insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'knowledge_base');
-CREATE POLICY "Allow Auth Update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'knowledge_base');
-CREATE POLICY "Allow Auth Delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'knowledge_base');
-```
+完整、可重複執行的資料庫設定請使用 [supabase_schema.sql](supabase_schema.sql)。正式環境請先依 [SECURITY_DEPLOYMENT.md](SECURITY_DEPLOYMENT.md) 檢查與測試；設定表只允許伺服器存取。
 
 ---
 

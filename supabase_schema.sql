@@ -45,9 +45,25 @@ CREATE TABLE IF NOT EXISTS public.user_states (
 -- 3. 啟用 RLS
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.processed_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow Auth Access" ON public.settings FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow Auth Access States" ON public.user_states FOR ALL USING (auth.role() = 'authenticated');
+-- Settings and webhook deduplication are server-only, including for administrators.
+DROP POLICY IF EXISTS "Allow Auth Access" ON public.settings;
+REVOKE ALL ON TABLE public.settings, public.processed_events FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.settings, public.processed_events TO service_role;
+
+-- Only trusted app_metadata grants admin rights. user_metadata must never be used.
+DROP POLICY IF EXISTS "Allow Auth Access States" ON public.user_states;
+DROP POLICY IF EXISTS "Admin states select" ON public.user_states;
+DROP POLICY IF EXISTS "Admin states update" ON public.user_states;
+REVOKE ALL ON TABLE public.user_states FROM PUBLIC, anon, authenticated;
+GRANT SELECT, UPDATE ON public.user_states TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_states TO service_role;
+CREATE POLICY "Admin states select" ON public.user_states FOR SELECT TO authenticated
+USING ((SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin');
+CREATE POLICY "Admin states update" ON public.user_states FOR UPDATE TO authenticated
+USING ((SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin')
+WITH CHECK ((SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin');
 
 -- 4. 初始資料
 INSERT INTO public.settings (id) SELECT gen_random_uuid() WHERE NOT EXISTS (SELECT 1 FROM public.settings);
@@ -59,11 +75,20 @@ VALUES ('knowledge_base', 'knowledge_base', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- 允許任何人讀取檔案
+-- This bucket is deliberately PUBLIC: upload only documents intended for publication.
+DROP POLICY IF EXISTS "Allow Public Select" ON storage.objects;
 CREATE POLICY "Allow Public Select" ON storage.objects
 FOR SELECT TO public
 USING (bucket_id = 'knowledge_base');
 
 -- 允許已登入的管理員上傳/更新/刪除檔案
-CREATE POLICY "Allow Auth Insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'knowledge_base');
-CREATE POLICY "Allow Auth Update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'knowledge_base');
-CREATE POLICY "Allow Auth Delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'knowledge_base');
+DROP POLICY IF EXISTS "Allow Auth Insert" ON storage.objects;
+DROP POLICY IF EXISTS "Allow Auth Update" ON storage.objects;
+DROP POLICY IF EXISTS "Allow Auth Delete" ON storage.objects;
+CREATE POLICY "Allow Auth Insert" ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'knowledge_base' AND (SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin');
+CREATE POLICY "Allow Auth Update" ON storage.objects FOR UPDATE TO authenticated
+USING (bucket_id = 'knowledge_base' AND (SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin')
+WITH CHECK (bucket_id = 'knowledge_base' AND (SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin');
+CREATE POLICY "Allow Auth Delete" ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'knowledge_base' AND (SELECT auth.jwt()) -> 'app_metadata' ->> 'role' = 'admin');

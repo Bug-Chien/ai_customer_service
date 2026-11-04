@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { settingsRequest } from '../lib/settings-api';
 import { Save, RefreshCcw, Copy, Bot, MessageCircle } from 'lucide-react';
 
 export default function Dashboard() {
@@ -15,13 +16,7 @@ export default function Dashboard() {
 
   const fetchSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .single();
-
-      if (error) throw error;
-      setSettings(data);
+      setSettings(await settingsRequest());
     } catch (error) {
       console.error('Error fetching settings:', error);
     } finally {
@@ -32,15 +27,7 @@ export default function Dashboard() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('settings')
-        .update({
-          ...settings,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', settings.id);
-
-      if (error) throw error;
+      setSettings(await settingsRequest(settings));
       alert('設定已儲存！');
     } catch (error: any) {
       console.error('Error saving settings:', error);
@@ -54,7 +41,7 @@ export default function Dashboard() {
     const { name, value, type, checked } = e.target;
     setSettings((prev: any) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : type === 'number' ? Number(value) : value
     }));
   };
 
@@ -140,7 +127,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-6">
           <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-            <input type="password" name={settings.active_ai === 'gpt' ? 'gpt_api_key' : 'gemini_api_key'} value={settings.active_ai === 'gpt' ? (settings.gpt_api_key || '') : (settings.gemini_api_key || '')} onChange={handleChange} className="w-full px-4 py-2 border rounded-lg" placeholder="輸入 API 金鑰" />
+            <input type="password" autoComplete="new-password" name={settings.active_ai === 'gpt' ? 'gpt_api_key' : 'gemini_api_key'} value={settings.active_ai === 'gpt' ? (settings.gpt_api_key || '') : (settings.gemini_api_key || '')} onChange={handleChange} className="w-full px-4 py-2 border rounded-lg" placeholder="留白保留原金鑰；輸入新值以更換" />
+            <p className="text-xs text-gray-500 mt-1">{settings.configured_secrets?.includes(settings.active_ai === 'gpt' ? 'gpt_api_key' : 'gemini_api_key') ? '已設定金鑰' : '尚未設定金鑰'}</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">模型名稱</label>
@@ -226,11 +214,11 @@ export default function Dashboard() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Channel Access Token</label>
-            <input type="password" name="line_channel_access_token" value={settings.line_channel_access_token || ''} onChange={handleChange} className="w-full px-4 py-2 border rounded-lg" />
+            <input type="password" autoComplete="new-password" name="line_channel_access_token" value={settings.line_channel_access_token || ''} onChange={handleChange} placeholder="留白保留原值" className="w-full px-4 py-2 border rounded-lg" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Channel Secret</label>
-            <input type="password" name="line_channel_secret" value={settings.line_channel_secret || ''} onChange={handleChange} className="w-full px-4 py-2 border rounded-lg" />
+            <input type="password" autoComplete="new-password" name="line_channel_secret" value={settings.line_channel_secret || ''} onChange={handleChange} placeholder="留白保留原值" className="w-full px-4 py-2 border rounded-lg" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">轉接關鍵字 (逗號隔開)</label>
