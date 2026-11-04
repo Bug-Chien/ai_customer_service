@@ -71,6 +71,10 @@ function App() {
     );
   }
 
+  if (session && session.user?.app_metadata?.role !== 'admin') {
+    return <div className="p-8 text-center">此帳號沒有管理員權限。<button onClick={() => supabase.auth.signOut()} className="ml-4 underline">登出</button></div>;
+  }
+
   return (
     <BrowserRouter>
       <Routes>
